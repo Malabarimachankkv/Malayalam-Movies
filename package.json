@@ -1,0 +1,18 @@
+{
+  "name": "malayalam-classics-addon",
+  "version": "1.2.0",
+  "description": "Stremio/Nuvio addon listing old Malayalam classics",
+  "main": "index.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "build": "node scripts/build-static.js",
+    "import": "node scripts/import-playlist.js",
+    "import-imdb": "node scripts/import-imdb-csv.js"
+  },
+  "dependencies": {
+    "stremio-addon-sdk": "^1.6.10"
+  }
+}

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Malayalam Old Classics</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #12141a; color: #e8e8ee; margin: 0; display: grid; place-items: center; min-height: 100vh; }
+  main { max-width: 480px; padding: 24px; }
+  h1 { margin: 0 0 8px; font-size: 1.6rem; }
+  p { color: #aab; line-height: 1.5; }
+  a.btn { display: inline-block; background: #7b5bf5; color: #fff; padding: 12px 20px; border-radius: 8px; text-decoration: none; font-weight: 600; margin: 8px 0 16px; }
+  code { display: block; background: #1e212b; padding: 10px; border-radius: 6px; word-break: break-all; user-select: all; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Malayalam Old Classics</h1>
+  <p>A Stremio / Nuvio addon listing Malayalam classic films.</p>
+  <a class="btn" id="install" href="#">Install in Stremio</a>
+  <p>For Nuvio or manual install, copy this manifest URL into the app's addon settings:</p>
+  <code id="url"></code>
+</main>
+<script>
+  var base = location.origin + location.pathname.replace(/[^\/]*$/, '');
+  var manifest = base + 'manifest.json';
+  document.getElementById('url').textContent = manifest;
+  document.getElementById('install').href = 'stremio://' + manifest.replace(/^https?:\/\//, '');
+</script>
+</body>
+</html>

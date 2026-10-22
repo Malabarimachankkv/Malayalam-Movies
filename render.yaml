@@ -1,0 +1,8 @@
+# Optional: deploy the live server (with search + genre filter) on Render.com as a free web service.
+services:
+  - type: web
+    name: malayalam-classics-addon
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
