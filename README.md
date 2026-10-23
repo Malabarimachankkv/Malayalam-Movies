@@ -1,57 +1,62 @@
 # Malayalam Old Classics – Stremio / Nuvio addon
 
-Lists Malayalam classic films and returns playable streams. Titles use IMDb ids, so the apps fill in posters and details themselves.
+Shows each of your IMDb lists as its own row (catalog) and returns playable streams. Titles use IMDb ids, so the apps fill in posters and details themselves.
 
-## Put it live on GitHub (free, no server)
+## Put it live
 
-1. Create a new GitHub repository and upload everything in this folder (keep the `.github` folder).
-2. In the repo go to **Settings → Pages** and set **Source** to **GitHub Actions**.
-3. Open the **Actions** tab. The "Deploy addon to GitHub Pages" run starts on its own (or run it manually). Wait for the green tick.
-4. Your addon is now at `https://YOUR-USERNAME.github.io/YOUR-REPO/`. Open that page for an install button, or add this manifest URL in the app:
+**GitHub Pages (free):** upload everything to a GitHub repo (keep the `.github` folder), then Settings → Pages → Source: **GitHub Actions**. Your manifest is `https://YOUR-USERNAME.github.io/YOUR-REPO/manifest.json`.
 
-   `https://YOUR-USERNAME.github.io/YOUR-REPO/manifest.json`
+**Vercel (free):** import the repo at vercel.com (Framework: Other). `vercel.json` sets the build command and output folder. Your manifest is `https://YOUR-PROJECT.vercel.app/manifest.json`.
 
-Every time you edit `movies.json` and commit, the site rebuilds automatically (about a minute). In Stremio you may need to remove and re-add the addon, or restart the app, to see catalog changes.
+Either way, editing `movies.json` / `lists.json` and committing redeploys automatically in about a minute. In the app, remove and re-add the addon if rows or titles don't refresh.
 
-Limits of the static version: no in-app search box filtering or genre filter (the catalog is paged by 100). If you want those, use the live server below.
+## Rows (one per IMDb list)
 
-## Live server version (optional)
+`lists.json` names each row:
 
-Needs Node 18+.
-
-```bash
-npm install
-npm start
-# http://localhost:7000/manifest.json
+```json
+[ { "id": "comedies", "name": "Malayalam Comedies" }, ... ]
 ```
 
-Deploy `index.js` on Render, Railway, Fly.io etc. (`render.yaml` is included for Render). The server version supports search and genre filtering.
+Edit the `name` values to rename a row. Each title in `movies.json` has `"lists": ["comedies", ...]`; a title can be in several rows.
 
-## Stream types (set per movie in `movies.json`)
+## Making titles playable
+
+A title only plays if it has a video source in `movies.json`:
 
 | Field   | What happens |
 |---------|--------------|
+| `ytId`  | YouTube video ID. Plays in-app only if your client supports it (test in Nuvio and Stremio). |
 | `url`   | Direct MP4/MKV/HLS link. **Always plays inside the app.** Most reliable. |
-| `ytId`  | YouTube video ID. Plays in-app only if your client supports `ytId` (test in Nuvio and Stremio). |
 
-Titles with neither field show in the catalog but have no streams. Set `INCLUDE_EXTERNAL=1` (server, or when building) to also show an "Open in YouTube app" fallback.
+Titles with neither show in the rows but have no streams.
 
-Example entry:
+**Easy way to add many links:**
+
+1. Run `node scripts/make-links-template.js`. It writes `links-template.csv` listing only the titles that still have no video. Open it in Excel or Google Sheets, find the film on YouTube, and paste the video's address into `youtube_url`. (Optionally paste a direct video file link into `direct_url`.)
+2. Save the file, then run: `node scripts/apply-links.js links-template.csv` (or send the filled file to Claude).
+3. Commit the updated `movies.json`.
+
+Or edit `movies.json` by hand:
 
 ```json
 { "id": "tt0282778", "imdbId": "tt0282778", "name": "Nadodikkattu", "year": 1987, "ytId": "VIDEO_ID" }
 ```
 
-## Adding more titles
+Set `INCLUDE_EXTERNAL=1` (server, or when building) to also show an "Open in YouTube app" fallback stream.
+
+## Adding more IMDb lists
 
 IMDb list → **Export** (top right of the list page) → CSV, then:
 
 ```bash
-node scripts/import-imdb-csv.js list1.csv list2.csv
+node scripts/import-imdb-csv.js mylist=mylist.csv other=other.csv
 ```
 
-This merges: new titles are added, duplicates are skipped, and your hand-added `ytId` / `url` values are kept.
+The name before `=` is the list id; add a nicer display name in `lists.json`. Titles already present are not duplicated (they just join the new list), and your `ytId` / `url` values are kept. Run `node scripts/make-links-template.js` afterwards for a fresh links sheet.
 
-Optional: with a free YouTube Data API key, `YOUTUBE_API_KEY=xxxx node scripts/import-imdb-csv.js list.csv` also guesses a YouTube video per new title. These are guesses, so review them. To import a YouTube playlist: `YOUTUBE_API_KEY=xxxx npm run import -- PLAYLIST_ID`.
+Optional: with a free YouTube Data API key, `YOUTUBE_API_KEY=xxxx node scripts/import-imdb-csv.js ...` guesses a YouTube video per new title and prints the channel name so you can review it. Guesses can be wrong.
 
-Prefer videos from official or licensed channels.
+## Live server version (optional, has search + genre filter)
+
+Needs Node 18+: `npm install` then `npm start` → `http://localhost:7000/manifest.json`. `render.yaml` is included for Render.

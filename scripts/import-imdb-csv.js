@@ -1,20 +1,23 @@
-// Usage: node scripts/import-imdb-csv.js <list1.csv> [<list2.csv> ...]
-// MERGES into movies.json: new titles are added, titles already present (same IMDb id) are skipped,
-// and any ytId / url / edits you made by hand are never overwritten.
-// Optional: YOUTUBE_API_KEY=xxxx -> also guesses a YouTube video for NEW titles that have no ytId/url.
+// Usage: node scripts/import-imdb-csv.js <listId>=<file.csv> [<listId>=<file2.csv> ...]
+//   e.g. node scripts/import-imdb-csv.js comedies=comedies.csv thrillers=thrillers.csv
+//
+// Each CSV becomes one catalog row in the app (named in lists.json - edit the names there).
+// MERGES into movies.json: new titles are added; a title already present is NOT duplicated,
+// it just also joins the new list. Your hand-added ytId / url values are never overwritten.
+// Optional: YOUTUBE_API_KEY=xxxx -> also guesses a YouTube video for NEW titles.
 //
 // Get a CSV: open the IMDb list while signed in -> "Export" (top right) -> save the .csv.
-// YouTube matches are GUESSES. Review movies.json afterwards and fix/remove wrong ones.
 const fs = require('fs');
 const path = require('path');
 
-const files = process.argv.slice(2);
-if (!files.length) {
-  console.error('Usage: node scripts/import-imdb-csv.js <list1.csv> [<list2.csv> ...]');
+const args = process.argv.slice(2);
+if (!args.length) {
+  console.error('Usage: node scripts/import-imdb-csv.js <listId>=<file.csv> [...]');
   process.exit(1);
 }
 const key = process.env.YOUTUBE_API_KEY;
-const outFile = path.join(__dirname, '..', 'movies.json');
+const moviesFile = path.join(__dirname, '..', 'movies.json');
+const listsFile = path.join(__dirname, '..', 'lists.json');
 
 function parseCSV(text) {
   const rows = [];
@@ -48,31 +51,45 @@ async function findYouTube(title, year) {
   return it ? { ytId: it.id.videoId, ytTitle: it.snippet.title, ytChannel: it.snippet.channelTitle } : null;
 }
 
-(async () => {
-  let movies = [];
-  if (fs.existsSync(outFile)) {
-    movies = JSON.parse(fs.readFileSync(outFile, 'utf8')).filter((m) => m.ytId !== 'REPLACE_WITH_YOUTUBE_VIDEO_ID');
-  }
-  const seen = new Set(movies.map((m) => m.imdbId || m.id));
-  let added = 0, skipped = 0;
+const prettify = (id) => id.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
-  for (const f of files) {
-    const text = fs.readFileSync(f, 'utf8').replace(/^﻿/, '');
+(async () => {
+  const movies = fs.existsSync(moviesFile) ? JSON.parse(fs.readFileSync(moviesFile, 'utf8')) : [];
+  const lists = fs.existsSync(listsFile) ? JSON.parse(fs.readFileSync(listsFile, 'utf8')) : [];
+  const byId = new Map(movies.map((m) => [m.imdbId || m.id, m]));
+  let added = 0, joined = 0;
+
+  for (const arg of args) {
+    const eq = arg.indexOf('=');
+    const file = eq > 0 ? arg.slice(eq + 1) : arg;
+    const listId = eq > 0 ? arg.slice(0, eq) : path.basename(file, path.extname(file)).toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    if (!lists.find((l) => l.id === listId)) lists.push({ id: listId, name: prettify(listId) });
+
+    const text = fs.readFileSync(file, 'utf8').replace(/^﻿/, '');
     const [header, ...rows] = parseCSV(text);
     const col = (name) => header.findIndex((h) => h.trim().toLowerCase() === name.toLowerCase());
-    const iConst = col('Const'), iTitle = col('Title'), iOrig = col('Original Title'), iYear = col('Year'),
-          iGenres = col('Genres'), iDir = col('Directors'), iDesc = col('Description'), iType = col('Title Type');
-    if (iTitle < 0) throw new Error(`${f}: no "Title" column. Is this an IMDb list export?`);
+    const iPos = col('Position'), iConst = col('Const'), iTitle = col('Title'), iOrig = col('Original Title'),
+          iYear = col('Year'), iGenres = col('Genres'), iDir = col('Directors'), iDesc = col('Description'), iType = col('Title Type');
+    if (iTitle < 0) throw new Error(`${file}: no "Title" column. Is this an IMDb list export?`);
 
-    let fa = 0, fs_ = 0;
-    for (const r of rows) {
+    let fa = 0, fj = 0;
+    for (let n = 0; n < rows.length; n++) {
+      const r = rows[n];
       const type = iType >= 0 ? r[iType] : 'movie';
       if (type && /tv|episode|video game/i.test(type) && !/movie/i.test(type)) continue;
       const imdbId = iConst >= 0 ? r[iConst] : undefined;
       const id = imdbId || (r[iTitle] || '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
-      if (seen.has(id)) { fs_++; continue; }
-      seen.add(id);
-      const m = {
+      const position = (iPos >= 0 && parseInt(r[iPos], 10)) || n + 1;
+
+      let m = byId.get(id);
+      if (m) {
+        m.lists = m.lists || [];
+        m.pos = m.pos || {};
+        if (!m.lists.includes(listId)) { m.lists.push(listId); fj++; }
+        m.pos[listId] = position;
+        continue;
+      }
+      m = {
         id,
         imdbId,
         name: r[iTitle],
@@ -81,6 +98,8 @@ async function findYouTube(title, year) {
         genres: iGenres >= 0 && r[iGenres] ? r[iGenres].split(',').map((s) => s.trim()) : undefined,
         director: iDir >= 0 && r[iDir] ? r[iDir].split(',').map((s) => s.trim()) : undefined,
         description: iDesc >= 0 && r[iDesc] ? r[iDesc] : undefined,
+        lists: [listId],
+        pos: { [listId]: position },
       };
       if (key) {
         try {
@@ -90,12 +109,14 @@ async function findYouTube(title, year) {
         } catch (e) { console.error(e.message); }
       }
       movies.push(m);
+      byId.set(id, m);
       fa++;
     }
-    console.log(`${path.basename(f)}: added ${fa}, already present ${fs_}`);
-    added += fa; skipped += fs_;
+    console.log(`${path.basename(file)} -> list "${listId}": ${fa} new titles, ${fj} existing titles added to this list`);
+    added += fa; joined += fj;
   }
 
-  fs.writeFileSync(outFile, JSON.stringify(movies, null, 2));
-  console.log(`movies.json: ${movies.length} total (${added} new, ${skipped} duplicates skipped)`);
+  fs.writeFileSync(moviesFile, JSON.stringify(movies, null, 2));
+  fs.writeFileSync(listsFile, JSON.stringify(lists, null, 2) + '\n');
+  console.log(`movies.json: ${movies.length} total. lists.json: ${lists.map((l) => l.id).join(', ')} (edit names there)`);
 })().catch((e) => { console.error(e.message); process.exit(1); });

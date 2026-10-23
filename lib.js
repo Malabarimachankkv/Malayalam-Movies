@@ -1,8 +1,7 @@
 // Shared logic used by both the live server (index.js) and the static build (scripts/build-static.js).
-// No dependencies on purpose, so the GitHub Pages build needs no npm install.
+// No dependencies on purpose, so the GitHub Pages / Vercel build needs no npm install.
 
 const PREFIX = 'mlclassic:';
-const CATALOG_ID = 'malayalam-classics';
 const PAGE_SIZE = 100;
 
 // Entries with an IMDb id use it as their id, so the app fetches poster/plot/cast
@@ -11,29 +10,41 @@ const metaId = (m) => m.imdbId || PREFIX + m.id;
 
 const ytThumb = (id) => `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
 
-function buildManifest({ static: isStatic = false } = {}) {
+// One catalog (= one row in the app) per list in lists.json.
+// Movies that belong to no list go into a "More" catalog, only if there are any.
+function catalogsFor(movies, lists) {
+  const cats = lists.map((l) => ({ id: `ml-${l.id}`, name: l.name, listId: l.id }));
+  if (movies.some((m) => !(m.lists || []).length)) cats.push({ id: 'ml-more', name: 'Malayalam – More', listId: null });
+  return cats;
+}
+
+function moviesInCatalog(movies, cat) {
+  if (!cat.listId) return movies.filter((m) => !(m.lists || []).length);
+  const pos = (m) => (m.pos && m.pos[cat.listId]) || 1e9;
+  return movies.filter((m) => (m.lists || []).includes(cat.listId)).sort((a, b) => pos(a) - pos(b));
+}
+
+function buildManifest({ static: isStatic = false, catalogs = [] } = {}) {
   return {
     id: 'community.malayalam.classics',
-    version: '1.2.0',
+    version: '1.3.0',
     name: 'Malayalam Old Classics',
-    description: 'Browse a curated list of Malayalam classic films and play them inside the app.',
+    description: 'Browse curated lists of Malayalam classic films and play them inside the app.',
     resources: [
       'catalog',
       { name: 'meta', types: ['movie'], idPrefixes: [PREFIX] },
       { name: 'stream', types: ['movie'], idPrefixes: ['tt', PREFIX] },
     ],
     types: ['movie'],
-    catalogs: [
-      {
-        type: 'movie',
-        id: CATALOG_ID,
-        name: 'Malayalam Old Classics',
-        // Search and genre filtering need a live server; a static site can only page.
-        extra: isStatic
-          ? [{ name: 'skip', isRequired: false }]
-          : [{ name: 'search', isRequired: false }, { name: 'genre', isRequired: false }, { name: 'skip', isRequired: false }],
-      },
-    ],
+    catalogs: catalogs.map((c) => ({
+      type: 'movie',
+      id: c.id,
+      name: c.name,
+      // Search and genre filtering need a live server; a static site can only page.
+      extra: isStatic
+        ? [{ name: 'skip', isRequired: false }]
+        : [{ name: 'search', isRequired: false }, { name: 'genre', isRequired: false }, { name: 'skip', isRequired: false }],
+    })),
   };
 }
 
@@ -68,4 +79,4 @@ function streamsFor(m, includeExternal = false) {
   return streams;
 }
 
-module.exports = { PREFIX, CATALOG_ID, PAGE_SIZE, metaId, buildManifest, toMeta, streamsFor };
+module.exports = { PREFIX, PAGE_SIZE, metaId, catalogsFor, moviesInCatalog, buildManifest, toMeta, streamsFor };
